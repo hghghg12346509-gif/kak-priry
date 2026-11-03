@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Чтец вслух — озвучка любого текста</title>
+<style>
+  :root{
+    --card:rgba(23,26,43,.85);
+    --line:rgba(255,255,255,.08);
+    --text:#e8eaf6;
+    --muted:#98a1c8;
+    --accent:#6c8cff;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+
+  body{
+    margin:0;
+    padding:36px 16px 90px;
+    min-height:100vh;
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    background:#0d1020;
+    background-image:
+      radial-gradient(1000px 600px at 8% -12%, #1d2450 0%, transparent 60%),
+      radial-gradient(800px 560px at 108% 4%, #2b1c4d 0%, transparent 58%);
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .head{max-width:880px;margin:0 auto 22px;text-align:center}
+  .head h1{
+    margin:0 0 8px;font-size:clamp(24px,4vw,34px);letter-spacing:-.5px;
+    background:linear-gradient(90deg,#9db4ff,#c9a6ff);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .head p{margin:0;color:var(--muted);font-size:15px;line-height:1.5}
+
+  .card{
+    max-width:880px;margin:0 auto 18px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:20px;
+    backdrop-filter:blur(8px);
+    box-shadow:0 14px 40px rgba(0,0,0,.28);
+  }
+
+  textarea{
+    width:100%;min-height:230px;resize:vertical;
+    background:#12152a;color:var(--text);
+    border:1px solid var(--line);border-radius:13px;
+    padding:14px 16px;font-size:16px;line-height:1.65;
+    font-family:inherit;outline:none;transition:border-color .2s;
+  }
+  textarea:focus{border-color:var(--accent)}
+  textarea::placeholder{color:#5d668c}
+
+  .reader{
+    position:relative;
+    max-height:46vh;overflow-y:auto;
+    background:#12152a;
+    border:1px solid var(--line);border-radius:13px;
+    padding:16px 18px;font-size:17px;line-height:1.8;
+    scrollbar-width:thin;
+  }
+  .reader::-webkit-scrollbar{width:8px}
+  .reader::-webkit-scrollbar-thumb{background:#2c3358;border-radius:9px}
+
+  .reader .chunk{
+    cursor:pointer;border-radius:6px;padding:1px 3px;
+    opacity:.5;transition:background .18s,opacity .18s,color .18s;
+  }
+  .reader .chunk:hover{background:rgba(255,255,255,.06);opacity:.85}
+  .reader .chunk.active{
+    background:linear-gradient(90deg,rgba(108,140,255,.38),rgba(160,108,255,.22));
+    color:#fff;opacity:1;
+    box-shadow:inset 0 0 0 1px rgba(108,140,255,.45);
+  }
+
+  .meta{
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+    margin-top:10px;font-size:13px;color:var(--muted);
+  }
+  .status{color:var(--accent);font-weight:600}
+
+  .progress{height:8px;background:#12152a;border-radius:99px;overflow:hidden;margin-top:12px}
+  .progress > i{
+    display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,#5b7cfa,#a06cff);
+    transition:width .3s ease;
+  }
+
+  .field{margin-bottom:16px}
+  .field:last-of-type{margin-bottom:0}
+  .field label{
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:12.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px;
+  }
+  .val{color:var(--accent);font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0;font-size:13px}
+
+  select{
+    width:100%;padding:11px 12px;border-radius:11px;
+    background:#12152a;color:var(--text);border:1px solid var(--line);
+    font-size:15px;font-family:inherit;outline:none;cursor:pointer;
+  }
+  select:focus{border-color:var(--accent)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:6px;margin:10px 0;
+    border-radius:99px;outline:none;cursor:pointer;
+    background:linear-gradient(90deg,#5b7cfa,#a06cff);
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:#fff;border:3px solid #6c8cff;
+    box-shadow:0 2px 8px rgba(0,0,0,.45);cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:3px solid #6c8cff;box-shadow:0 2px 8px rgba(0,0,0,.45);cursor:pointer;
+  }
+
+  .timer-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  input[type=number]{
+    width:92px;padding:10px 12px;border-radius:11px;
+    background:#12152a;color:var(--text);border:1px solid var(--line);
+    font-size:15px;font-family:inherit;outline:none;
+  }
+  input[type=number]:focus{border-color:var(--accent)}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{
+    padding:8px 14px;border-radius:99px;font-size:13px;font-weight:700;
+    background:#1b2036;color:var(--muted);border:1px solid var(--line);
+    cursor:pointer;transition:.15s;font-family:inherit;
+  }
+  .chip:hover{color:#fff;border-color:var(--accent)}
+
+  .timer-display{
+    margin-left:auto;font-variant-numeric:tabular-nums;
+    font-size:20px;font-weight:800;letter-spacing:1px;color:#5d668c;
+  }
+  .timer-display.on{color:var(--accent);text-shadow:0 0 18px rgba(108,140,255,.55)}
+
+  .buttons{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+  .buttons button{
+    flex:1;min-width:130px;padding:14px 18px;border-radius:13px;
+    border:1px solid transparent;font-size:15px;font-weight:700;font-family:inherit;
+    color:#fff;background:#232a48;cursor:pointer;transition:.18s;
+  }
+  .buttons button:not(:disabled):hover{transform:translateY(-1px);filter:brightness(1.13)}
+  .buttons button:disabled{opacity:.33;cursor:not-allowed}
+  #play{background:linear-gradient(135deg,#5b7cfa,#a06cff);box-shadow:0 10px 24px rgba(108,140,255,.28)}
+  #stop:not(:disabled){background:#3a1f2c;color:#ff9db0}
+
+  .hidden{display:none !important}
+
+  .hint{max-width:880px;margin:0 auto;text-align:center;color:#5d668c;font-size:13px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>📖 Чтец вслух</h1>
+  <p>Вставьте любой текст — сказку, статью, целую книгу — и он прочитает его голосом.<br>
+     Скорость, тембр и таймер автоматического выключения — всё на месте.</p>
+</div>
+
+<section class="card">
+  <textarea id="text" placeholder="Вставьте сюда текст… Чем длиннее — тем дольше он будет читать."></textarea>
+  <div id="reader" class="reader hidden"></div>
+  <div class="meta">
+    <span id="charCount">0 символов</span>
+    <span id="status" class="status"></span>
+  </div>
+  <div class="progress"><i id="progress"></i></div>
+</section>
+
+<section class="card">
+  <div class="field">
+    <label for="voice">Голос</label>
+    <select id="voice"><option>Загрузка голосов…</option></select>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label for="rate">Скорость <span id="rateVal" class="val">1.00×</span></label>
+      <input id="rate" type="range" min="0.5" max="2" step="0.05" value="1">
+    </div>
+    <div class="field">
+      <label for="pitch">Тон <span id="pitchVal" class="val">1.00</span></label>
+      <input id="pitch" type="range" min="0.5" max="1.5" step="0.05" value="1">
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="timerMin">Таймер выключения, минут</label>
+    <div class="timer-row">
+      <input id="timerMin" type="number" min="0" step="1" value="0">
+      <div class="chips">
+        <button type="button" class="chip" data-min="5">5 мин</button>
+        <button type="button" class="chip" data-min="15">15 мин</button>
+        <button type="button" class="chip" data-min="30">30 мин</button>
+        <button type="button" class="chip" data-min="60">1 час</button>
+        <button type="button" class="chip" data-min="0">выкл</button>
+      </div>
+      <div class="timer-display" id="timerDisplay">выкл</div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button id="play">▶ Читать</button>
+    <button id="pause" disabled>⏸ Пауза</button>
+    <button id="stop" disabled>⏹ Стоп</button>
+  </div>
+</section>
+
+<p class="hint">Совет: кликните по любому предложению в тексте во время чтения — чтец продолжит с этого места.<br>
+Таймер считает только время, пока текст реально читается (пауза его останавливает).</p>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    text: $('text'), reader: $('reader'), charCount: $('charCount'), status: $('status'),
+    progress: $('progress'), voice: $('voice'), rate: $('rate'), rateVal: $('rateVal'),
+    pitch: $('pitch'), pitchVal: $('pitchVal'), timerMin: $('timerMin'),
+    timerDisplay: $('timerDisplay'), play: $('play'), pause: $('pause'), stop: $('stop')
+  };
+
+  const synth = window.speechSynthesis;
+  if (!synth) {
+    el.status.textContent = '⚠️ Ваш браузер не поддерживает озвучку';
+    el.play.disabled = true;
+    return;
+  }
+
+  /* ---------------- состояние ---------------- */
+  let chunks = [];        // массив кусочков текста
+  let idx = 0;            // текущий кусочек
+  let session = 0;        // «поколение» — чтобы старые колбэки не мешали
+  let state = 'idle';     // idle | playing | paused
+  let remaining = 0;      // секунд до выключения, 0 = таймер выключен
+
+  const MAX_CHUNK = 170;  // символы: короткие куски = надёжнее в Chrome
+
+  /* ---------------- разбивка текста ---------------- */
+  function buildChunks(raw) {
+    const clean = raw.replace(/\r\n?/g, '\n')
+                     .replace(/[ \t]+/g, ' ')
+                     .replace(/\n{2,}/g, '\n')
+                     .trim();
+
+    // делим по концам предложений
+    const parts = clean.match(/[^.!?…\n]+[.!?…]+[»"')]*\s*|[^.!?…\n]+$/g) || [clean];
+
+    const chunks = [];
+    let cur = '';
+    for (let p of parts) {
+      p = p.replace(/\n+/g, ' ');
+      if (!p.trim()) continue;
+      if (cur && cur.length + p.length > MAX_CHUNK) {
+        chunks.push(cur.trim());
+        cur = p;
+      } else {
+        cur += p;
+      }
+    }
+    if (cur.trim()) chunks.push(cur.trim());
+
+    // страховка: если совсем нет знаков препинания — режем по словам
+    const out = [];
+    for (const c of chunks) {
+      if (c.length <= 260) { out.push(c); continue; }
+      let s = c;
+      while (s.length > 260) {
+        let cut = s.lastIndexOf(' ', 260);
+        if (cut < 120) cut = 260;
+        out.push(s.slice(0, cut).trim());
+        s = s.slice(cut).trim();
+      }
+      if (s) out.push(s);
+    }
+    return out.filter(Boolean);
+  }
+
+  /* ---------------- голоса ---------------- */
+  let voiceList = [];
+
+  function loadVoices() {
+    voiceList = synth.getVoices() || [];
+    if (!voiceList.length) return;
+
+    const sorted = voiceList.slice().sort((a, b) => {
+      const ar = a.lang.toLowerCase().startsWith('ru') ? 0 : 1;
+      const br = b.lang.toLowerCase().startsWith('ru') ? 0 : 1;
+      if (ar !== br) return ar - br;
+      return a.name.localeCompare(b.name);
+    });
+
+    el.voice.innerHTML = '';
+    sorted.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.voiceURI;
+      o.textContent = v.name + ' (' + v.lang + ')';
+      el.voice.appendChild(o);
+    });
+
+    const ru = sorted.find(v => v.lang.toLowerCase().startsWith('ru'));
+    if (ru) el.voice.value = ru.voiceURI;
+  }
+
+  function getSelectedVoice() {
+    const list = synth.getVoices() || [];
+    return list.find(v => v.voiceURI === el.voice.value) || null;
+  }
+
+  loadVoices();
+  if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = loadVoices;
+  // на некоторых движках голоса подгружаются с задержкой
+  setTimeout(loadVoices, 300);
+  setTimeout(loadVoices, 1200);
+
+  /* ---------------- отрисовка читалки ---------------- */
+  function renderReader() {
+    const frag = document.createDocumentFragment();
+    chunks.forEach((c, i) => {
+      const sp = document.createElement('span');
+      sp.className = 'chunk';
+      sp.dataset.i = i;
+      sp.textContent = c;
+      frag.appendChild(sp);
+      frag.appendChild(document.createTextNode(' '));
+    });
+    el.reader.innerHTML = '';
+    el.reader.appendChild(frag);
+  }
+
+  function setActive(i) {
+    const prev = el.reader.querySelector('.chunk.active');
+    if (prev) prev.classList.remove('active');
+
+    const node = el.reader.querySelector('.chunk[data-i="' + i + '"]');
+    if (node) {
+      node.classList.add('active');
+      const top = node.offsetTop - el.reader.clientHeight / 2 + node.offsetHeight / 2;
+      el.reader.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+    el.progress.style.width = (i / chunks.length * 100) + '%';
+  }
+
+  /* ---------------- таймер ---------------- */
+  function fmt(s) {
+    const m = Math.floor(s / 60);
+    const ss = s % 60;
+    return m + ':' + String(ss).padStart(2, '0');
+  }
+
+  function updateTimerDisplay() {
+    if (remaining > 0) {
+      el.timerDisplay.textContent = fmt(remaining);
+      el.timerDisplay.classList.add('on');
+    } else {
+      el.timerDisplay.textContent = 'выкл';
+      el.timerDisplay.classList.remove('on');
+    }
+  }
+
+  setInterval(() => {
+    if (state === 'playing' && remaining > 0) {
+      remaining--;
+      updateTimerDisplay();
+      if (remaining <= 0) {
+        stopReading();
+        setStatus('⏰ Таймер сработал — чтение остановлено');
+      }
+    }
+  }, 1000);
+
+  function readTimerInput() {
+    const m = parseFloat(el.timerMin.value) || 0;
+    return Math.max(0, Math.round(m * 60));
+  }
+
+  el.timerMin.addEventListener('input', () => {
+    if (state !== 'idle') {
+      remaining = readTimerInput();
+      updateTimerDisplay();
+    }
+  });
+
+  document.querySelectorAll('.chip').forEach(b => {
+    b.addEventListener('click', () => {
+      el.timerMin.value = b.dataset.min;
+      remaining = readTimerInput();
+      updateTimerDisplay();
+    });
+  });
+
+  /* ---------------- статус и кнопки ---------------- */
+  function setStatus(t) { el.status.textContent = t; }
+
+  function updateUI() {
+    const idle = state === 'idle';
+    el.play.disabled = !idle;
+    el.pause.disabled = idle;
+    el.stop.disabled = idle;
+    el.pause.textContent = state === 'paused' ? '▶ Продолжить' : '⏸ Пауза';
+    el.text.classList.toggle('hidden', !idle);
+    el.reader.classList.toggle('hidden', idle);
+  }
+
+  /* ---------------- сердце плеера ---------------- */
+  function stopSpeech() {
+    session++;
+    try { synth.cancel(); } catch (e) {}
+    try { if (synth.paused) synth.resume(); } catch (e) {}
+  }
+
+  function speakChunk(sess) {
+    if (sess !== session) return;
+    if (idx >= chunks.length) { finish(); return; }
+
+    setActive(idx);
+
+    const u = new SpeechSynthesisUtterance(chunks[idx]);
+    const v = getSelectedVoice();
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'ru-RU'; }
+    u.rate = parseFloat(el.rate.value) || 1;
+    u.pitch = parseFloat(el.pitch.value) || 1;
+    u.volume = 1;
+
+    u.onend = function () {
+      if (sess !== session) return;
+      idx++;
+      speakChunk(sess);
+    };
+
+    u.onerror = function (e) {
+      if (sess !== session) return;
+      const err = e && e.error;
+      if (err === 'interrupted' || err === 'canceled') return;
+      if (err === 'not-allowed') {
+        stopReading();
+        setStatus('⚠️ Браузер заблокировал озвучку — нажмите «Читать» ещё раз');
+        return;
+      }
+      // прочие сбои — пропускаем кусок и едем дальше
+      idx++;
+      setTimeout(() => speakChunk(sess), 120);
+    };
+
+    try {
+      synth.speak(u);
+    } catch (err) {
+      idx++;
+      setTimeout(() => speakChunk(sess), 200);
+    }
+  }
+
+  function startReading() {
+    const text = el.text.value.trim();
+    if (!text) { setStatus('⚠️ Сначала вставьте текст'); el.text.focus(); return; }
+
+    stopSpeech();
+
+    chunks = buildChunks(text);
+    if (!chunks.length) { setStatus('⚠️ Не удалось разобрать текст'); return; }
+
+    renderReader();
+    idx = 0;
+    state = 'playing';
+    session++;
+    const sess = session;
+
+    remaining = readTimerInput();
+    updateTimerDisplay();
+
+    el.progress.style.width = '0%';
+    el.reader.scrollTop = 0;
+    setStatus('🔊 Читаю…');
+    updateUI();
+
+    // небольшая пауза после cancel() — иначе Chrome иногда «глотает» старт
+    setTimeout(() => speakChunk(sess), 130);
+  }
+
+  function togglePause() {
+    if (state === 'playing') {
+      try { synth.pause(); } catch (e) {}
+      state = 'paused';
+      setStatus('⏸ Пауза');
+    } else if (state === 'paused') {
+      try { synth.resume(); } catch (e) {}
+      state = 'playing';
+      setStatus('🔊 Читаю…');
+    }
+    updateUI();
+  }
+
+  function stopReading() {
+    stopSpeech();
+    state = 'idle';
+    remaining = 0;
+    updateTimerDisplay();
+    el.progress.style.width = '0%';
+    setStatus('⏹ Остановлено');
+    updateUI();
+  }
+
+  function finish() {
+    state = 'idle';
+    remaining = 0;
+    updateTimerDisplay();
+    el.progress.style.width = '100%';
+    setStatus('✅ Прочитано до конца');
+    updateUI();
+  }
+
+  function jumpTo(i) {
+    if (state === 'idle') return;
+    stopSpeech();
+    idx = i;
+    state = 'playing';
+    session++;
+    const sess = session;
+    setStatus('🔊 Читаю…');
+    updateUI();
+    setTimeout(() => speakChunk(sess), 130);
+  }
+
+  /* ---------------- события ---------------- */
+  el.play.addEventListener('click', startReading);
+  el.pause.addEventListener('click', togglePause);
+  el.stop.addEventListener('click', stopReading);
+
+  el.reader.addEventListener('click', e => {
+    const t = e.target.closest('.chunk');
+    if (t) jumpTo(parseInt(t.dataset.i, 10));
+  });
+
+  el.rate.addEventListener('input', () => {
+    el.rateVal.textContent = parseFloat(el.rate.value).toFixed(2) + '×';
+  });
+
+  el.pitch.addEventListener('input', () => {
+    el.pitchVal.textContent = parseFloat(el.pitch.value).toFixed(2);
+  });
+
+  el.text.addEventListener('input', () => {
+    el.charCount.textContent = el.text.value.length.toLocaleString('ru-RU') + ' символов';
+    clearTimeout(el.text._t);
+    el.text._t = setTimeout(() => {
+      try { localStorage.setItem('reader-text', el.text.value); } catch (e) {}
+    }, 400);
+  });
+
+  // горячие клавиши
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (state === 'idle') startReading(); else togglePause();
+    }
+    if (e.code === 'Escape' && state !== 'idle') stopReading();
+  });
+
+  // уход со страницы — выключаем звук
+  window.addEventListener('beforeunload', () => { try { synth.cancel(); } catch (e) {} });
+
+  /* ---------------- инициализация ---------------- */
+  try {
+    const saved = localStorage.getItem('reader-text');
+    if (saved) el.text.value = saved;
+  } catch (e) {}
+  el.charCount.textContent = el.text.value.length.toLocaleString('ru-RU') + ' символов';
+  updateTimerDisplay();
+  updateUI();
+})();
+</script>
+</body>
+</html>
