@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Чтец вслух — озвучка любого текста</title>
+<title>Чтец вслух — озвучка любого текста живыми голосами</title>
+<meta name="description" content="Умный чтец вслух: проверяет все голоса в браузере, собирает топ-5 лучших «живых» голосов и читает тексты как человек.">
 <style>
   :root{
     --card:rgba(23,26,43,.85);
@@ -11,6 +12,9 @@
     --text:#e8eaf6;
     --muted:#98a1c8;
     --accent:#6c8cff;
+    --ok:#4ade80;
+    --warn:#fbbf24;
+    --bad:#ff7d9c;
   }
   *,*::before,*::after{box-sizing:border-box}
 
@@ -28,7 +32,7 @@
     -webkit-font-smoothing:antialiased;
   }
 
-  .head{max-width:880px;margin:0 auto 22px;text-align:center}
+  .head{max-width:920px;margin:0 auto 22px;text-align:center}
   .head h1{
     margin:0 0 8px;font-size:clamp(24px,4vw,34px);letter-spacing:-.5px;
     background:linear-gradient(90deg,#9db4ff,#c9a6ff);
@@ -37,7 +41,7 @@
   .head p{margin:0;color:var(--muted);font-size:15px;line-height:1.5}
 
   .card{
-    max-width:880px;margin:0 auto 18px;
+    max-width:920px;margin:0 auto 18px;
     background:var(--card);
     border:1px solid var(--line);
     border-radius:18px;
@@ -45,6 +49,10 @@
     backdrop-filter:blur(8px);
     box-shadow:0 14px 40px rgba(0,0,0,.28);
   }
+  .card > h2{
+    margin:0 0 14px;font-size:16px;letter-spacing:.2px;display:flex;align-items:center;gap:8px;
+  }
+  .card > h2 .sub{font-weight:400;font-size:12.5px;color:var(--muted);margin-left:auto;text-align:right}
 
   textarea{
     width:100%;min-height:230px;resize:vertical;
@@ -80,7 +88,7 @@
 
   .meta{
     display:flex;justify-content:space-between;align-items:center;gap:12px;
-    margin-top:10px;font-size:13px;color:var(--muted);
+    margin-top:10px;font-size:13px;color:var(--muted);flex-wrap:wrap;
   }
   .status{color:var(--accent);font-weight:600}
 
@@ -106,9 +114,11 @@
     font-size:15px;font-family:inherit;outline:none;cursor:pointer;
   }
   select:focus{border-color:var(--accent)}
+  option:disabled{color:#5d668c}
 
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+  @media(max-width:640px){.grid2,.grid3{grid-template-columns:1fr}}
 
   input[type=range]{
     -webkit-appearance:none;appearance:none;width:100%;height:6px;margin:10px 0;
@@ -140,6 +150,7 @@
     cursor:pointer;transition:.15s;font-family:inherit;
   }
   .chip:hover{color:#fff;border-color:var(--accent)}
+  .chip.on{background:linear-gradient(135deg,#5b7cfa,#a06cff);color:#fff;border-color:transparent}
 
   .timer-display{
     margin-left:auto;font-variant-numeric:tabular-nums;
@@ -160,7 +171,65 @@
 
   .hidden{display:none !important}
 
-  .hint{max-width:880px;margin:0 auto;text-align:center;color:#5d668c;font-size:13px;line-height:1.6}
+  /* ---------- карточки голосов ---------- */
+  .voiceGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px}
+  .vcard{
+    text-align:left;background:#151931;border:1px solid var(--line);border-radius:14px;
+    padding:14px;cursor:pointer;transition:.18s;color:var(--text);font-family:inherit;position:relative;
+  }
+  .vcard:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .vcard.sel{
+    border-color:transparent;
+    background:linear-gradient(#151931,#151931) padding-box,
+               linear-gradient(135deg,#5b7cfa,#a06cff) border-box;
+    box-shadow:0 8px 22px rgba(108,140,255,.18);
+  }
+  .vcard .rank{
+    position:absolute;top:10px;right:10px;font-size:11px;font-weight:800;
+    padding:3px 9px;border-radius:99px;background:#232a48;color:var(--muted);letter-spacing:.3px;
+  }
+  .vcard.top .rank{background:linear-gradient(135deg,#ffb347,#ff7b54);color:#241300}
+  .vcard .vname{font-weight:700;font-size:14.5px;margin:0 68px 2px 0;line-height:1.3}
+  .vcard .vtag{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+  .vcard .vtag em{font-style:normal;color:#b9c4ff}
+  .vcard .vscore{font-size:12.5px;font-weight:800;color:var(--ok);margin-bottom:8px}
+  .vcard .vscore.mid{color:var(--warn)}
+  .vcard .vscore.low{color:var(--bad)}
+  .vcard .vbtns{display:flex;gap:8px}
+  .vcard .vbtns button{
+    padding:6px 12px;border-radius:9px;border:1px solid var(--line);
+    background:#1b2036;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;
+    font-family:inherit;transition:.15s;
+  }
+  .vcard .vbtns button:hover{color:#fff;border-color:var(--accent)}
+  .vcard.sel .checkmark{position:absolute;left:14px;top:10px;font-size:12px;color:var(--ok);font-weight:800}
+
+  .notice{
+    background:#1b2036;border:1px dashed var(--line);border-radius:12px;
+    padding:12px 14px;font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:14px;
+  }
+  .notice b{color:var(--text)}
+
+  /* ---------- панель проверки ---------- */
+  .scanbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .scanbar .btn{
+    padding:11px 18px;border-radius:12px;border:1px solid transparent;
+    background:linear-gradient(135deg,#3ddc84,#2aa8a8);color:#062018;font-weight:800;font-size:14px;
+    cursor:pointer;font-family:inherit;transition:.18s;
+  }
+  .scanbar .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+  .scanbar .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .scanbar .btn.ghost{background:#232a48;color:var(--text)}
+  .scaninfo{font-size:13px;color:var(--muted)}
+  .scanlog{
+    margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;
+    max-height:120px;overflow-y:auto;background:#12152a;border-radius:10px;padding:10px 12px;
+    scrollbar-width:thin;
+  }
+  .scanlog .ok{color:var(--ok)} .scanlog .no{color:var(--bad)} .scanlog .wn{color:var(--warn)}
+
+  .hint{max-width:920px;margin:14px auto 0;text-align:center;color:#5d668c;font-size:13px;line-height:1.6}
+  kbd{background:#1b2036;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11.5px}
 </style>
 </head>
 <body>
@@ -168,8 +237,33 @@
 <div class="head">
   <h1>📖 Чтец вслух</h1>
   <p>Вставьте любой текст — сказку, статью, целую книгу — и он прочитает его голосом.<br>
-     Скорость, тембр и таймер автоматического выключения — всё на месте.</p>
+     Сайт сам проверяет <b>каждый голос</b> на вашем устройстве и оставляет только лучшие — живые, человеческие, не «роботизированные».</p>
 </div>
+
+<section class="card">
+  <h2>🎙️ Лучшие голоса <span class="sub" id="voicesSub"></span></h2>
+  <div class="notice" id="voicesNotice">
+    💡 Здесь появятся <b>5 лучших живых голосов</b>. Система сама оценивает каждый голос вашего браузера
+    (название, движок, язык, «нейросетевость») и отбирает самые естественные — те, что звучат как человек, а не как робот.
+    Нажмите любую карточку, чтобы выбрать голос, и 🔎 — чтобы послушать образец.
+  </div>
+  <div class="voiceGrid" id="voiceGrid"></div>
+  <div class="field" style="margin-top:16px">
+    <label for="voiceAll">Все доступные голоса на устройстве <span class="val" id="voiceAllCount"></span></label>
+    <select id="voiceAll"><option>Загрузка голосов…</option></select>
+  </div>
+</section>
+
+<section class="card">
+  <h2>🔍 Проверка голосов на устройстве</h2>
+  <div class="scanbar">
+    <button type="button" class="btn" id="scanBtn">▶ Проверить каждое приложение</button>
+    <button type="button" class="btn ghost hidden" id="scanStop">Остановить</button>
+    <span class="scaninfo" id="scanInfo">Ещё не запускалась.</span>
+  </div>
+  <div class="progress" style="margin-top:12px"><i id="scanProg"></i></div>
+  <div class="scanlog hidden" id="scanLog"></div>
+</section>
 
 <section class="card">
   <textarea id="text" placeholder="Вставьте сюда текст… Чем длиннее — тем дольше он будет читать."></textarea>
@@ -182,12 +276,19 @@
 </section>
 
 <section class="card">
+  <h2>⚙️ Настройки чтения</h2>
+
   <div class="field">
-    <label for="voice">Голос</label>
-    <select id="voice"><option>Загрузка голосов…</option></select>
+    <label>Пресет звучания</label>
+    <div class="chips" id="presets">
+      <button type="button" class="chip on" data-preset="natural">🗣️ Как человек</button>
+      <button type="button" class="chip" data-preset="audiobook">🎧 Аудиокнига</button>
+      <button type="button" class="chip" data-preset="fast">⚡ Быстро</button>
+      <button type="button" class="chip" data-preset="calm">🌙 Спокойно</button>
+    </div>
   </div>
 
-  <div class="grid2">
+  <div class="grid3">
     <div class="field">
       <label for="rate">Скорость <span id="rateVal" class="val">1.00×</span></label>
       <input id="rate" type="range" min="0.5" max="2" step="0.05" value="1">
@@ -195,6 +296,38 @@
     <div class="field">
       <label for="pitch">Тон <span id="pitchVal" class="val">1.00</span></label>
       <input id="pitch" type="range" min="0.5" max="1.5" step="0.05" value="1">
+    </div>
+    <div class="field">
+      <label for="vol">Громкость <span id="volVal" class="val">100%</span></label>
+      <input id="vol" type="range" min="0" max="1" step="0.05" value="1">
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label for="pauseSentence">Пауза после предложения <span id="pauseSentenceVal" class="val">350 мс</span></label>
+      <input id="pauseSentence" type="range" min="0" max="1500" step="50" value="350">
+    </div>
+    <div class="field">
+      <label for="pausePara">Пауза после абзаца <span id="pauseParaVal" class="val">800 мс</span></label>
+      <input id="pausePara" type="range" min="0" max="3000" step="100" value="800">
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label for="interp">Живая интонация <span class="val">оживляет монотонных роботов</span></label>
+      <select id="interp">
+        <option value="on">✅ Включена — речь звучит естественно</option>
+        <option value="off">Выключена — ровная диктовка</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="langLock">Язык чтения <span class="val">чтобы русский не читался английским</span></label>
+      <select id="langLock">
+        <option value="ru">🇷🇺 Только русские голоса</option>
+        <option value="all">🌍 Голоса на любом языке</option>
+      </select>
     </div>
   </div>
 
@@ -221,7 +354,8 @@
 </section>
 
 <p class="hint">Совет: кликните по любому предложению в тексте во время чтения — чтец продолжит с этого места.<br>
-Таймер считает только время, пока текст реально читается (пауза его останавливает).</p>
+Таймер считает только время, пока текст реально читается (пауза его останавливает).<br>
+Горячие клавиши: <kbd>Space</kbd> — читать/пауза, <kbd>Esc</kbd> — стоп.</p>
 
 <script>
 (function () {
@@ -230,112 +364,478 @@
   const $ = id => document.getElementById(id);
   const el = {
     text: $('text'), reader: $('reader'), charCount: $('charCount'), status: $('status'),
-    progress: $('progress'), voice: $('voice'), rate: $('rate'), rateVal: $('rateVal'),
-    pitch: $('pitch'), pitchVal: $('pitchVal'), timerMin: $('timerMin'),
-    timerDisplay: $('timerDisplay'), play: $('play'), pause: $('pause'), stop: $('stop')
+    progress: $('progress'), voiceAll: $('voiceAll'), voiceAllCount: $('voiceAllCount'),
+    voiceGrid: $('voiceGrid'), voicesSub: $('voicesSub'), voicesNotice: $('voicesNotice'),
+    rate: $('rate'), rateVal: $('rateVal'), pitch: $('pitch'), pitchVal: $('pitchVal'),
+    vol: $('vol'), volVal: $('volVal'),
+    pauseSentence: $('pauseSentence'), pauseSentenceVal: $('pauseSentenceVal'),
+    pausePara: $('pausePara'), pauseParaVal: $('pauseParaVal'),
+    interp: $('interp'), langLock: $('langLock'),
+    timerMin: $('timerMin'), timerDisplay: $('timerDisplay'),
+    play: $('play'), pause: $('pause'), stop: $('stop'),
+    scanBtn: $('scanBtn'), scanStop: $('scanStop'), scanInfo: $('scanInfo'),
+    scanProg: $('scanProg'), scanLog: $('scanLog'), presets: $('presets')
   };
 
   const synth = window.speechSynthesis;
   if (!synth) {
     el.status.textContent = '⚠️ Ваш браузер не поддерживает озвучку';
     el.play.disabled = true;
+    el.scanBtn.disabled = true;
     return;
   }
 
-  /* ---------------- состояние ---------------- */
-  let chunks = [];        // массив кусочков текста
-  let idx = 0;            // текущий кусочек
-  let session = 0;        // «поколение» — чтобы старые колбэки не мешали
-  let state = 'idle';     // idle | playing | paused
-  let remaining = 0;      // секунд до выключения, 0 = таймер выключен
+  let storageBroken = false;
+  const store = {
+    get(k, d) {
+      if (storageBroken) return d;
+      try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }
+      catch (e) { storageBroken = true; return d; }
+    },
+    set(k, v) {
+      if (storageBroken) return;
+      try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { storageBroken = true; }
+    }
+  };
 
-  const MAX_CHUNK = 170;  // символы: короткие куски = надёжнее в Chrome
+  /* ============ состояние ============ */
+  let chunks = [];
+  let idx = 0;
+  let session = 0;
+  let state = 'idle';          // idle | playing | paused
+  let remaining = 0;
+  let allVoices = [];          // сырой список всех голосов системы
+  let topVoices = [];          // 5 лучших, отобранных системой
+  let selectedURI = store.get('reader-voice', null);
+  const MAX_CHUNK = 170;
 
-  /* ---------------- разбивка текста ---------------- */
+  /* ================================================================
+     ОЦЕНКА ГОЛОСОВ: кто «живой», а кто «робот»
+     Каждый голос получает балл 0..100 по косвенным признакам качества.
+     ================================================================ */
+  const GOOD_WORDS = [
+    ['neural', 34], ['natural', 30], ['premium', 26], ['enhanced', 20], ['nuss', 18],
+    ['google', 14], ['siri', 14], ['eloquence', 24], ['wavenext', 28], ['waver', 20],
+    ['online', 8], ['hd ', 10], '(hd)', 12
+  ];
+  const BAD_WORDS = [
+    ['compact', 18], ['eloquent', 16], ['robot', 30], ['bot', 12],
+    ['old-fashioned', 20], ['basic', 8], '[legacy]', 14
+  ];
+  const RU_HINTS = ['russian', 'milena', 'katya', 'alyona', 'irina', 'maxim', 'pavel', 'tatyana', 'dmitry', 'юрий', 'русс'];
+
+  function scoreVoice(v) {
+    let s = 40;
+    const n = (v.name || '').toLowerCase();
+    const uri = (v.voiceURI || '').toLowerCase();
+    const both = n + ' ' + uri;
+
+    GOOD_WORDS.forEach(([w, wgt]) => { if (both.includes(w)) s += wgt; });
+    BAD_WORDS.forEach(([w, wgt]) => { if (both.includes(w)) s -= wgt; });
+
+    if (v.localService === false) s += 12;   // облачные/сетевые обычно качественнее локальных
+    if (v.lang && v.lang.toLowerCase().startsWith('ru')) s += 10;
+    if (/chrome|safari|firefox|edge/.test(uri)) s -= 6; // встроенные движки браузера — базовое качество
+
+    // маленькие бонусы за «фирменность»
+    if (/microsoft|apple|google|yandex|saliva|lovo|eleven/i.test(n)) s += 6;
+
+    return Math.max(0, Math.min(100, s));
+  }
+
+  function isRu(v) { return (v.lang || '').toLowerCase().startsWith('ru'); }
+
+  function ruHint(v) {
+    const n = (v.name || '').toLowerCase();
+    return RU_HINTS.some(h => n.includes(h));
+  }
+
+  function humanLabel(score) {
+    if (score >= 78) return '🟢 живой, почти как человек';
+    if (score >= 60) return '🟡 неплохой, слегка механический';
+    return '🟠 может звучать как робот';
+  }
+
+  function engineLabel(v) {
+    const uri = (v.voiceURI || '').toLowerCase();
+    if (uri.includes('google')) return 'движок Google (сетевой)';
+    if (uri.includes('siri')) return 'Apple Siri';
+    if (uri.includes('microsoft')) return 'Microsoft Azure/WinRT';
+    if (uri.includes('chrome')) return 'встроенный в Chrome';
+    if (uri.includes('firefox')) return 'встроенный в Firefox';
+    if (v.localService === false) return 'сетевой движок';
+    return 'локальный движок';
+  }
+
+  /* -------- выбор Топ-5 -------- */
+  function pickTop() {
+    const ruOnly = el.langLock.value === 'ru';
+    let pool = allVoices.slice();
+
+    let scored = pool.map(v => ({ v, sc: scoreVoice(v) + (ruHint(v) ? 4 : 0) }));
+    if (ruOnly) {
+      const rus = scored.filter(x => isRu(x.v));
+      // если русских голосов мало — подмешиваем лучшие нерусские, но не показываем это молча
+      if (rus.length >= 5) scored = rus;
+      else if (rus.length > 0) scored = rus.concat(scored.filter(x => !isRu(x.v)));
+    }
+
+    scored.sort((a, b) => b.sc - a.sc || a.v.name.localeCompare(b.v.name));
+
+    const seen = new Set();
+    topVoices = [];
+    for (const item of scored) {
+      const key = item.v.name.toLowerCase().replace(/\s*\((?:\u0441\u0442\u0430\u043d\u0434\u0430\u0440\u0442|\u043f\u043e\u043c\u043e\u0448\u043d\u0438\u043a)\)\s*/g, '');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      topVoices.push({ voice: item.v, score: Math.min(100, item.sc) });
+      if (topVoices.length === 5) break;
+    }
+
+    // сохраняем выбранное, если оно пропало из топа
+    if (selectedURI && !topVoices.some(t => t.voice.voiceURI === selectedURI)) {
+      const still = allVoices.find(v => v.voiceURI === selectedURI);
+      if (still) topVoices[4] = { voice: still, score: scoreVoice(still) };
+      else selectedURI = null;
+    }
+    if (!selectedURI && topVoices.length) selectedURI = topVoices[0].voice.voiceURI;
+
+    renderVoiceCards();
+    renderAllSelect();
+  }
+
+  function renderVoiceCards() {
+    el.voiceGrid.innerHTML = '';
+    if (!topVoices.length) {
+      el.voicesNotice.innerHTML = '⚠️ Не найдено ни одного голоса. Установите голосовые пакеты: Windows — «Параметры → Время и язык → Речь»; Android/iOS — скачайте языковые голоса в настройках доступности. После этого перезагрузите страницу.';
+      el.voicesSub.textContent = '';
+      return;
+    }
+    el.voicesSub.textContent = 'проверено голосов: ' + allVoices.length + ' · показано лучших: ' + topVoices.length;
+
+    topVoices.forEach((t, i) => {
+      const card = document.createElement('div');
+      card.className = 'vcard' + (i < 3 ? ' top' : '') + (t.voice.voiceURI === selectedURI ? ' sel' : '');
+      card.dataset.uri = t.voice.voiceURI;
+
+      const cls = t.score >= 78 ? '' : (t.score >= 60 ? ' mid' : ' low');
+      card.innerHTML =
+        (t.voice.voiceURI === selectedURI ? '<span class="checkmark">✓ выбран</span>' : '') +
+        '<span class="rank">' + (i === 0 ? '№1 · лучший' : '№' + (i + 1)) + '</span>' +
+        '<div class="vname" style="margin-left:' + (t.voice.voiceURI === selectedURI ? '64px' : '0') + '">' + esc(t.voice.name) + '</div>' +
+        '<div class="vtag">' + esc(t.voice.lang) + ' · <em>' + esc(engineLabel(t.voice)) + '</em></div>' +
+        '<div class="vscore' + cls + '">' + t.score + '/100 · ' + humanLabel(t.score) + '</div>' +
+        '<div class="vbtns"><button type="button" data-act="sample">🔎 Послушать</button>' +
+        '<button type="button" data-act="choose">Выбрать</button></div>';
+
+      card.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        if (btn && btn.dataset.act === 'sample') { sampleVoice(t.voice); return; }
+        selectedURI = t.voice.voiceURI;
+        store.set('reader-voice', selectedURI);
+        renderVoiceCards();
+        syncSelect();
+        setStatus('🎙️ Голос выбран: ' + t.voice.name);
+      });
+      el.voiceGrid.appendChild(card);
+    });
+  }
+
+  function esc(s) { const d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+  function renderAllSelect() {
+    el.voiceAll.innerHTML = '';
+    const sorted = allVoices.slice().sort((a, b) => {
+      const ar = isRu(a) ? 0 : 1, br = isRu(b) ? 0 : 1;
+      if (ar !== br) return ar - br;
+      return scoreVoice(b) - scoreVoice(a);
+    });
+    sorted.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.voiceURI;
+      o.textContent = v.name + ' (' + v.lang + ') · ' + scoreVoice(v) + '/100';
+      el.voiceAll.appendChild(o);
+    });
+    el.voiceAllCount.textContent = allVoices.length + ' шт.';
+    syncSelect();
+  }
+
+  function syncSelect() {
+    if (selectedURI) el.voiceAll.value = selectedURI;
+  }
+
+  el.voiceAll.addEventListener('change', () => {
+    selectedURI = el.voiceAll.value;
+    store.set('reader-voice', selectedURI);
+    renderVoiceCards();
+  });
+
+  function getSelectedVoice() {
+    return allVoices.find(v => v.voiceURI === selectedURI) || null;
+  }
+
+  /* ================================================================
+     ПРОВЕРКА КАЖДОГО ГОЛОСА («проверяет каждое приложение»)
+     Прогоняет тестовую фразу через каждый голос и слушает события.
+     ================================================================ */
+  let scanning = false;
+
+  function logLine(html, cls) {
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.innerHTML = html;
+    el.scanLog.appendChild(div);
+    el.scanLog.scrollTop = el.scanLog.scrollHeight;
+  }
+
+  async function scanAll() {
+    if (scanning) return;
+    if (!allVoices.length) { logStart(); return; }
+    scanning = true;
+    el.scanBtn.disabled = true;
+    el.scanStop.classList.remove('hidden');
+    el.scanLog.classList.remove('hidden');
+    el.scanLog.innerHTML = '';
+    logLine('🔍 Запускаем проверку каждого голоса на устройстве…');
+
+    const TEST = 'Это проверка голоса. Живой звук важнее робота.';
+    let passed = 0, failed = 0;
+    const results = [];
+
+    for (let i = 0; i < allVoices.length; i++) {
+      if (!scanning) { logLine('⏹ Проверка остановлена вручную.', 'wn'); break; }
+      const v = allVoices[i];
+      el.scanInfo.textContent = 'Проверка ' + (i + 1) + '/' + allVoices.length + ': ' + v.name;
+      el.scanProg.style.width = ((i + 1) / allVoices.length * 100) + '%';
+
+      const res = await testOneVoice(v, TEST);
+      results.push(res);
+      if (res.ok) { passed++; logLine('✅ <b>' + esc(v.name) + '</b> (' + esc(v.lang) + ') — отвечает, рейтинг ' + res.score + '/100', 'ok'); }
+      else { failed++; logLine('❌ <b>' + esc(v.name) + '</b> (' + esc(v.lang) + ') — не отвечает или ошибка: ' + esc(res.reason), 'no'); }
+    }
+
+    if (scanning) {
+      const dead = results.filter(r => !r.ok).map(r => r.v.voiceURI);
+      store.set('reader-dead-voices', dead);
+      logLine('— — —');
+      logLine('🏁 Готово: проверено <b>' + results.length + '</b>, работают <b class="ok">' + passed + '</b>, не отвечают <b class="no">' + failed + '</b>.', '');
+      if (failed) logLine('⚠️ Нерабочие голоса помечены — они исключены из списка лучших. Нажмите «Обновить список», если установили новые голосовые приложения.', 'wn');
+      else logLine('👍 Все голоса проходят проверку — в топе только живые и рабочие.', 'ok');
+      el.scanInfo.textContent = 'Проверка завершена: ' + passed + ' из ' + results.length + ' голосов работают.';
+      pickTop();
+    }
+
+    scanning = false;
+    el.scanBtn.disabled = false;
+    el.scanStop.classList.add('hidden');
+  }
+
+  function testOneVoice(v, text) {
+    return new Promise(resolve => {
+      const sess = ++session; // глушим основной плеер на время теста
+      stopMainSpeech();
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = v.voice || v; u.lang = v.lang; u.rate = 1.05; u.pitch = 1; u.volume = 0.9;
+      let done = false;
+      const finish = (ok, reason) => {
+        if (done) return; done = true;
+        clearTimeout(timer);
+        resolve({ ok, reason: reason || '', v, score: scoreVoice(v) });
+      };
+      u.onstart = () => {};
+      u.onend = () => finish(true);
+      u.onerror = (e) => finish(false, (e && e.error) || 'ошибка');
+      const timer = setTimeout(() => finish(false, 'тайм-аут 6 сек (голос молчит)'), 6000);
+      try { synth.cancel(); } catch (e) {}
+      setTimeout(() => { if (sess === session) { try { synth.speak(u); } catch (e) { finish(false, 'исключение'); } } }, 90);
+    });
+  }
+
+  function stopMainSpeech() {
+    session++;
+    try { synth.cancel(); } catch (e) {}
+    try { if (synth.paused) synth.resume(); } catch (e) {}
+    if (state !== 'idle') { state = 'idle'; updateUI(); }
+  }
+
+  function logStart() {
+    el.scanLog.classList.remove('hidden');
+    logLine('Голоса ещё не загрузились. Подождите пару секунд и нажмите снова.', 'wn');
+  }
+
+  el.scanBtn.addEventListener('click', scanAll);
+  el.scanStop.addEventListener('click', () => { scanning = false; });
+
+  /* -------- прослушивание образца без остановки основного чтения -------- */
+  function sampleVoice(v) {
+    const wasBusy = state !== 'idle';
+    const savedIdx = idx;
+    if (wasBusy) stopMainSpeech();
+    const u = new SpeechSynthesisUtterance('Привет! Я голос «' + v.name + '». Так я читаю по-русски — живо и понятно.');
+    u.voice = v.voice || v; u.lang = v.lang;
+    u.rate = parseFloat(el.rate.value) || 1;
+    u.pitch = parseFloat(el.pitch.value) || 1;
+    u.volume = parseFloat(el.vol.value);
+    u.onend = u.onerror = () => {
+      if (wasBusy) { idx = savedIdx; resumeAfterSample(); }
+    };
+    try { synth.speak(u); setStatus('🔎 Пробно проигрываем голос: ' + v.name); } catch (e) {}
+  }
+  function resumeAfterSample() {
+    state = 'playing'; updateUI();
+    const sess = ++session;
+    setTimeout(() => speakChunk(sess), 150);
+  }
+
+  /* ================================================================
+     ЗАГРУЗКА ГОЛОСОВ
+     ================================================================ */
+  let voicesTried = 0;
+  function normalize(list) {
+    return Array.prototype.slice.call(list).map(function (v) {
+      return {
+        voiceURI: String(v.voiceURI || (v.name + '|' + v.lang)),
+        name: String(v.name || 'Голос'),
+        lang: String(v.lang || ''),
+        localService: !!v.localService,
+        netWork: String(v.netWork || ''),
+        voice: v
+      };
+    });
+  }
+
+  // голоса из кэша восстанавливаем по имени+языку (объект .voice нельзя сохранить в localStorage)
+  function revive(cached) {
+    const live = normalize((function(){ try { return synth.getVoices() || []; } catch(e){ return []; } })());
+    return cached.map(function (c) {
+      const match = live.find(v => v.voiceURI === c.voiceURI) ||
+                    live.find(v => v.name === c.name && v.lang === c.lang);
+      return Object.assign({}, c, { voice: match ? match.voice : null });
+    }).filter(v => v.voice);   // без живого объекта голос не использовать
+  }
+
+  let voicesCacheErr = false;
+  function loadVoices() {
+    let raw;
+    try { raw = synth.getVoices() || []; } catch (e) { raw = []; }
+    let list = normalize(raw);
+    if (!list.length && !voicesCacheErr) {
+      // подстраховка: на некоторых движках голоса «пропадают» — держим последний рабочий список
+      const cached = store.get('reader-voices-cache', null);
+      if (cached && cached.length) {
+        const revived = revive(cached);
+        if (revived.length) list = revived;
+      }
+    } else if (list.length && !voicesCacheErr) {
+      store.set('reader-voices-cache', list.map(function (v) {
+        return { voiceURI: v.voiceURI, name: v.name, lang: v.lang, localService: v.localService, netWork: v.netWork };
+      }));
+    }
+    if (list.length) {
+      allVoices = list;
+      // исключаем мёртвые после проверки
+      const dead = store.get('reader-dead-voices', []);
+      if (dead.length && !scanning) {
+        const alive = allVoices.filter(v => !dead.includes(v.voiceURI));
+        if (alive.length >= 3) allVoices = alive;
+      }
+      pickTop();
+      if (!el.status.textContent) setStatus('🎙️ Проверьте голоса кнопкой «Проверить каждое приложение»');
+    } else if (voicesTried < 20) {
+      voicesTried++;
+      setTimeout(loadVoices, 250);
+    }
+  }
+  loadVoices();
+  if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = loadVoices;
+  setTimeout(loadVoices, 400);
+  setTimeout(loadVoices, 1200);
+  setTimeout(loadVoices, 2500);
+  // страховка: некоторые движки не вызывают onvoiceschanged — просто опрашиваем их
+  let pollCount = 0;
+  const voicePoll = setInterval(() => {
+    pollCount++;
+    const before = allVoices.length;
+    loadVoices();
+    if (allVoices.length || pollCount > 40) clearInterval(voicePoll);
+  }, 500);
+
+  /* ================================================================
+     РАЗБИВКА ТЕКСТА + ЖИВАЯ ИНТОНАЦИЯ
+     ================================================================ */
   function buildChunks(raw) {
     const clean = raw.replace(/\r\n?/g, '\n')
                      .replace(/[ \t]+/g, ' ')
                      .replace(/\n{2,}/g, '\n')
                      .trim();
 
-    // делим по концам предложений
     const parts = clean.match(/[^.!?…\n]+[.!?…]+[»"')]*\s*|[^.!?…\n]+$/g) || [clean];
 
-    const chunks = [];
+    let out = [];
     let cur = '';
     for (let p of parts) {
+      const isParaEnd = /\n/.test(p) || p.endsWith('\n');
       p = p.replace(/\n+/g, ' ');
       if (!p.trim()) continue;
       if (cur && cur.length + p.length > MAX_CHUNK) {
-        chunks.push(cur.trim());
+        out.push({ t: cur.trim(), para: false });
         cur = p;
       } else {
         cur += p;
       }
+      if (isParaEnd && cur.trim()) { out.push({ t: cur.trim(), para: true }); cur = ''; }
     }
-    if (cur.trim()) chunks.push(cur.trim());
+    if (cur.trim()) out.push({ t: cur.trim(), para: false });
 
-    // страховка: если совсем нет знаков препинания — режем по словам
-    const out = [];
-    for (const c of chunks) {
-      if (c.length <= 260) { out.push(c); continue; }
-      let s = c;
+    // страховка: очень длинные куски режем по словам
+    const res = [];
+    for (const c of out) {
+      if (c.t.length <= 260) { res.push(c); continue; }
+      let s = c.t;
       while (s.length > 260) {
         let cut = s.lastIndexOf(' ', 260);
         if (cut < 120) cut = 260;
-        out.push(s.slice(0, cut).trim());
+        res.push({ t: s.slice(0, cut).trim(), para: false });
         s = s.slice(cut).trim();
       }
-      if (s) out.push(s);
+      if (s) res.push({ t: s, para: c.para });
     }
-    return out.filter(Boolean);
+    return res.filter(c => c.t);
   }
 
-  /* ---------------- голоса ---------------- */
-  let voiceList = [];
+  // «очеловечивание»: лёгкая модуляция тона и скорости, чтобы не звучать как робот
+  let humanTick = 0;
+  function humanize(u, text) {
+    if (el.interp.value !== 'on') return;
+    const basePitch = parseFloat(el.pitch.value) || 1;
+    const baseRate = parseFloat(el.rate.value) || 1;
 
-  function loadVoices() {
-    voiceList = synth.getVoices() || [];
-    if (!voiceList.length) return;
+    // вопрос — тон вверх, восклицание — чуть выше и быстрее, многоточие — медленнее
+    let dp = 0, dr = 0;
+    if (/\?/.test(text)) { dp += 0.12; dr += 0.02; }
+    if (/!/.test(text)) { dp += 0.06; dr += 0.04; }
+    if (/…/.test(text)) { dp -= 0.04; dr -= 0.05; }
 
-    const sorted = voiceList.slice().sort((a, b) => {
-      const ar = a.lang.toLowerCase().startsWith('ru') ? 0 : 1;
-      const br = b.lang.toLowerCase().startsWith('ru') ? 0 : 1;
-      if (ar !== br) return ar - br;
-      return a.name.localeCompare(b.name);
-    });
+    // чередование микро-отклонений: имитация естественной «дышащей» речи
+    humanTick++;
+    dp += (humanTick % 2 === 0 ? 0.035 : -0.03);
+    dr += (humanTick % 3 === 0 ? 0.02 : -0.015);
 
-    el.voice.innerHTML = '';
-    sorted.forEach(v => {
-      const o = document.createElement('option');
-      o.value = v.voiceURI;
-      o.textContent = v.name + ' (' + v.lang + ')';
-      el.voice.appendChild(o);
-    });
-
-    const ru = sorted.find(v => v.lang.toLowerCase().startsWith('ru'));
-    if (ru) el.voice.value = ru.voiceURI;
+    u.pitch = clamp(basePitch + dp, 0.5, 1.5);
+    u.rate = clamp(baseRate + dr, 0.5, 2);
   }
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 
-  function getSelectedVoice() {
-    const list = synth.getVoices() || [];
-    return list.find(v => v.voiceURI === el.voice.value) || null;
-  }
-
-  loadVoices();
-  if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = loadVoices;
-  // на некоторых движках голоса подгружаются с задержкой
-  setTimeout(loadVoices, 300);
-  setTimeout(loadVoices, 1200);
-
-  /* ---------------- отрисовка читалки ---------------- */
+  /* ================================================================
+     ЧИТАЛКА
+     ================================================================ */
   function renderReader() {
     const frag = document.createDocumentFragment();
     chunks.forEach((c, i) => {
       const sp = document.createElement('span');
       sp.className = 'chunk';
       sp.dataset.i = i;
-      sp.textContent = c;
+      sp.textContent = c.t;
       frag.appendChild(sp);
       frag.appendChild(document.createTextNode(' '));
     });
@@ -353,7 +853,7 @@
       const top = node.offsetTop - el.reader.clientHeight / 2 + node.offsetHeight / 2;
       el.reader.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     }
-    el.progress.style.width = (i / chunks.length * 100) + '%';
+    el.progress.style.width = (chunks.length ? (i / chunks.length * 100) : 0) + '%';
   }
 
   /* ---------------- таймер ---------------- */
@@ -362,7 +862,6 @@
     const ss = s % 60;
     return m + ':' + String(ss).padStart(2, '0');
   }
-
   function updateTimerDisplay() {
     if (remaining > 0) {
       el.timerDisplay.textContent = fmt(remaining);
@@ -372,7 +871,6 @@
       el.timerDisplay.classList.remove('on');
     }
   }
-
   setInterval(() => {
     if (state === 'playing' && remaining > 0) {
       remaining--;
@@ -388,15 +886,10 @@
     const m = parseFloat(el.timerMin.value) || 0;
     return Math.max(0, Math.round(m * 60));
   }
-
   el.timerMin.addEventListener('input', () => {
-    if (state !== 'idle') {
-      remaining = readTimerInput();
-      updateTimerDisplay();
-    }
+    if (state !== 'idle') { remaining = readTimerInput(); updateTimerDisplay(); }
   });
-
-  document.querySelectorAll('.chip').forEach(b => {
+  document.querySelectorAll('.chip[data-min]').forEach(b => {
     b.addEventListener('click', () => {
       el.timerMin.value = b.dataset.min;
       remaining = readTimerInput();
@@ -430,17 +923,22 @@
 
     setActive(idx);
 
-    const u = new SpeechSynthesisUtterance(chunks[idx]);
+    const c = chunks[idx];
+    const u = new SpeechSynthesisUtterance(c.t);
     const v = getSelectedVoice();
-    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'ru-RU'; }
-    u.rate = parseFloat(el.rate.value) || 1;
-    u.pitch = parseFloat(el.pitch.value) || 1;
-    u.volume = 1;
+    if (v) { u.voice = v.voice || v; u.lang = v.lang; }
+    else { u.lang = (el.langLock.value === 'ru') ? 'ru-RU' : 'ru'; }
+
+    u.volume = parseFloat(el.vol.value);
+    humanize(u, c.t);
+
+    const gap = c.para ? parseInt(el.pausePara.value, 10) : parseInt(el.pauseSentence.value, 10);
 
     u.onend = function () {
       if (sess !== session) return;
       idx++;
-      speakChunk(sess);
+      if (gap > 0) setTimeout(() => speakChunk(sess), gap);
+      else speakChunk(sess);
     };
 
     u.onerror = function (e) {
@@ -452,9 +950,11 @@
         setStatus('⚠️ Браузер заблокировал озвучку — нажмите «Читать» ещё раз');
         return;
       }
-      // прочие сбои — пропускаем кусок и едем дальше
+      if (err === 'voice-unavailable' || err === 'synthesis-failed') {
+        setStatus('⚠️ Этот голос сбоит — выберите другой или запустите проверку голосов');
+      }
       idx++;
-      setTimeout(() => speakChunk(sess), 120);
+      setTimeout(() => speakChunk(sess), 150);
     };
 
     try {
@@ -468,6 +968,7 @@
   function startReading() {
     const text = el.text.value.trim();
     if (!text) { setStatus('⚠️ Сначала вставьте текст'); el.text.focus(); return; }
+    if (!topVoices.length && !allVoices.length) { setStatus('⚠️ Голоса ещё загружаются — подождите секунду'); return; }
 
     stopSpeech();
 
@@ -485,10 +986,10 @@
 
     el.progress.style.width = '0%';
     el.reader.scrollTop = 0;
-    setStatus('🔊 Читаю…');
+    const v = getSelectedVoice();
+    setStatus('🔊 Читаю голосом «' + (v ? v.name : 'по умолчанию') + '»…');
     updateUI();
 
-    // небольшая пауза после cancel() — иначе Chrome иногда «глотает» старт
     setTimeout(() => speakChunk(sess), 130);
   }
 
@@ -536,6 +1037,41 @@
     setTimeout(() => speakChunk(sess), 130);
   }
 
+  /* ================================================================
+     ПРЕСЕТЫ И ОБНОВЛЕНИЕ ПОДПИСЕЙ СЛАЙДЕРОВ
+     ================================================================ */
+  const PRESETS = {
+    natural:   { rate: 1.00, pitch: 1.00, ps: 350, pp: 800, interp: 'on' },
+    audiobook: { rate: 0.92, pitch: 0.95, ps: 450, pp: 1100, interp: 'on' },
+    fast:      { rate: 1.35, pitch: 1.05, ps: 120, pp: 300, interp: 'on' },
+    calm:      { rate: 0.85, pitch: 0.90, ps: 600, pp: 1400, interp: 'off' }
+  };
+  function applyPreset(name, silent) {
+    const p = PRESETS[name];
+    if (!p) return;
+    el.rate.value = p.rate; el.pitch.value = p.pitch;
+    el.pauseSentence.value = p.ps; el.pausePara.value = p.pp;
+    el.interp.value = p.interp;
+    syncSliderLabels();
+    store.set('reader-preset', name);
+    document.querySelectorAll('#presets .chip').forEach(c => c.classList.toggle('on', c.dataset.preset === name));
+    if (!silent) setStatus('🎛️ Пресет: ' + name);
+  }
+  el.presets.addEventListener('click', e => {
+    const b = e.target.closest('.chip');
+    if (b) applyPreset(b.dataset.preset);
+  });
+
+  function syncSliderLabels() {
+    el.rateVal.textContent = parseFloat(el.rate.value).toFixed(2) + '×';
+    el.pitchVal.textContent = parseFloat(el.pitch.value).toFixed(2);
+    el.volVal.textContent = Math.round(parseFloat(el.vol.value) * 100) + '%';
+    el.pauseSentenceVal.textContent = el.pauseSentence.value + ' мс';
+    el.pauseParaVal.textContent = el.pausePara.value + ' мс';
+  }
+  [el.rate, el.pitch, el.vol, el.pauseSentence, el.pausePara].forEach(s => s.addEventListener('input', syncSliderLabels));
+  el.langLock.addEventListener('change', () => { pickTop(); });
+
   /* ---------------- события ---------------- */
   el.play.addEventListener('click', startReading);
   el.pause.addEventListener('click', togglePause);
@@ -546,25 +1082,14 @@
     if (t) jumpTo(parseInt(t.dataset.i, 10));
   });
 
-  el.rate.addEventListener('input', () => {
-    el.rateVal.textContent = parseFloat(el.rate.value).toFixed(2) + '×';
-  });
-
-  el.pitch.addEventListener('input', () => {
-    el.pitchVal.textContent = parseFloat(el.pitch.value).toFixed(2);
-  });
-
   el.text.addEventListener('input', () => {
     el.charCount.textContent = el.text.value.length.toLocaleString('ru-RU') + ' символов';
     clearTimeout(el.text._t);
-    el.text._t = setTimeout(() => {
-      try { localStorage.setItem('reader-text', el.text.value); } catch (e) {}
-    }, 400);
+    el.text._t = setTimeout(() => store.set('reader-text', el.text.value), 400);
   });
 
-  // горячие клавиши
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.code === 'Space') {
       e.preventDefault();
       if (state === 'idle') startReading(); else togglePause();
@@ -572,15 +1097,29 @@
     if (e.code === 'Escape' && state !== 'idle') stopReading();
   });
 
-  // уход со страницы — выключаем звук
   window.addEventListener('beforeunload', () => { try { synth.cancel(); } catch (e) {} });
 
   /* ---------------- инициализация ---------------- */
   try {
-    const saved = localStorage.getItem('reader-text');
-    if (saved) el.text.value = saved;
+    const savedText = localStorage.getItem('reader-text');
+    if (savedText) el.text.value = savedText;
   } catch (e) {}
+
+  // демо-текст при первом запуске
+  if (!el.text.value) {
+    el.text.value =
+      'Жил-был на краю леса маленький ёжик по имени Тимка. Каждое утро он надевал свои тёплые тапочки и шёл тропинкой вдоль ручья.\n\n' +
+      '— Доброе утро, солнце! — говорил Тимка. — Ты сегодня светит особенно ярко!\n\n' +
+      'Белка Рыжка качала хвостом на ветке и отвечала: — А ты всё такой же колючий, сосед. Но зато какой вежливый!\n\n' +
+      'И они смеялись — громко, по-настоящему, как умеют смеяться только друзья.';
+    try { store.set('reader-text', el.text.value); } catch (e) {}
+  }
+
+  const savedPreset = store.get('reader-preset', 'natural');
+  applyPreset(savedPreset, true);
+
   el.charCount.textContent = el.text.value.length.toLocaleString('ru-RU') + ' символов';
+  syncSliderLabels();
   updateTimerDisplay();
   updateUI();
 })();
