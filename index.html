@@ -1001,7 +1001,41 @@ const store = {
   del(k) { try { localStorage.removeItem('gk.' + k); } catch (e) {} }
 };
 
-const synth = window.speechSynthesis;
+const synth = window.speechSynthesis || null;
+
+/* ---------------- надёжный «мотор» синтеза (костыли против молчания) ---------------- */
+// 1) some voices never fire onend -> stuck queue. 2) Chrome pauses long utterances after ~15s.
+let _keepAliveInt = null, _lastSpeakTs = 0, _silentGateUntil = 0;
+function keepAliveStart() {
+  keepAliveStop();
+  if (!synth) return;
+  _keepAliveInt = setInterval(() => {
+    try {
+      // читаем сейчас? — каждые 6с «подталкиваем» движок, иначе Chrome засыпает на длинной фразе
+      if (reading && !paused && synth.speaking && !synth.paused && performance.now() - _lastSpeakTs > 5500) {
+        synth.pause(); synth.resume();
+      }
+      // очередь зависла (говорит, но ничего не произносится и не заканчивается) — освобождаем
+      if ((!reading || paused) && synth.speaking && performance.now() - _lastSpeakTs > 9000) synth.cancel();
+    } catch (e) {}
+  }, 3500);
+}
+function keepAliveStop() { clearInterval(_keepAliveInt); _keepAliveInt = null; }
+// «тихий глотатель» очереди: короткий беззвучный кусок сбрасывает залипшие состояния движка
+function speakSilentChunk() {
+  if (!synth) return;
+  if (Date.now() < _silentGateUntil) return; // защита от рекурсии
+  _silentGateUntil = Date.now() + 4000;
+  try {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0; u.rate = 2;
+    u.onend = () => { _silentGateUntil = 0; };
+    u.onerror = () => { _silentGateUntil = 0; };
+    synth.speak(u);
+  } catch (e) { _silentGateUntil = 0; }
+}
+// вызов synth.* вне стека обработчика события — лечит «молчание после клика» в Firefox/Chrome
+function deferredSpeak(fn) { setTimeout(fn, 60); }
 
 /* ---------------- ссылки на DOM ---------------- */
 const el = {};
@@ -1299,10 +1333,11 @@ let scanning = false, scanAbort = false;
 function testOneVoice(v, phrase, audible) {
   return new Promise(resolve => {
     try { synth.cancel(); } catch (e) {}
+    setTimeout(() => { // speak вне стека событий — иначе Firefox/Chrome могут «проглотить» речь
     const u = new SpeechSynthesisUtterance(phrase.text);
     u.voice = v.voice; u.lang = v.lang || 'ru-RU';
     u.rate = clamp(parseFloat(el.rate.value) || 1, .5, 2);
-    u.pitch = 1; u.volume = audible ? .8 : 0;
+    u.pitch = 1; u.volume = audible ? .8 : Math.max(.05, clamp(parseFloat(el.vol.value) || 1, 0, 1));
     const t0 = performance.now();
     let settled = false, started = false, startAt = 0;
     const timer = setTimeout(() => { if (!settled) { settled = true; try { synth.cancel(); } catch (e) {} finish(false, 'timeout'); } }, phrase.ms);
@@ -1310,12 +1345,14 @@ function testOneVoice(v, phrase, audible) {
       clearTimeout(timer);
       resolve({ ok, latencyMs: started ? Math.round(startAt - t0) : null, why });
     }
-    u.onstart = () => { started = true; startAt = performance.now(); };
+    u.onstart = () => { started = true; startAt = performance.now(); _lastSpeakTs = startAt; };
+    u.onboundary = () => { _lastSpeakTs = performance.now(); };
     u.onend = () => { if (!settled) { settled = true; finish(true, 'done'); } };
-    u.onerror = ev => { if (!settled) { settled = true; finish(false, 'error:' + (ev.error || 'unknown')); } };
+    u.onerror = ev => { if (!settled) { settled = true; finish(false, 'error:' + ((ev && ev.error) || 'unknown')); } };
     try { synth.speak(u); } catch (e) { if (!settled) { settled = true; clearTimeout(timer); finish(false, 'throw'); } }
-    // watchdog: если через 2.5с ни start ни error — голос молчит
-    setTimeout(() => { if (!settled && !started) { settled = true; clearTimeout(timer); try { synth.cancel(); } catch (e) {} finish(false, 'silence'); } }, 2500);
+    // watchdog: если через 3с ни start ни error — голос молчит
+    setTimeout(() => { if (!settled && !started) { settled = true; clearTimeout(timer); try { synth.cancel(); } catch (e) {} finish(false, 'silence'); } }, 3000);
+    }, 80);
   });
 }
 
@@ -1472,6 +1509,7 @@ function humanize(piece, interpMode) {
   let pitch = clamp(parseFloat(el.pitch.value) || 1, .5, 1.5);
   let prefix = '', suffix = '';
   if (interpMode === 'off') return { text: t, rate, pitch };
+  // микро-паузы вместо «многоточия-вдоха»: текст не портим, дышим через gap в onend
   const k = interpMode === 'max' ? 1 : interpMode === 'light' ? .35 : .65;
   // вопросы — тон выше и чуть быстрее; восклицания — эмоциональнее
   if (/[?][»"')\]]?\s*$/.test(t)) { pitch += .18 * k; rate += .04 * k; }
@@ -1480,8 +1518,7 @@ function humanize(piece, interpMode) {
   // лёгкий дрейф, чтобы не монотонить
   pitch += (r1 - .5) * .12 * k;
   rate += (r2 - .5) * .08 * k;
-  // «дыхание»: после длинных абзацев — микропауза через многоточие-маркер
-  if (el.breath.value === 'on' && interpMode !== 'off' && t.length > 90 && r2 > .45) suffix = ' …';
+  // «дыхание»: микропауза между кусками (см. gap в onend), текст не портим многоточиями
   if (interpMode === 'max' && /^[А-ЯA-Z«]/.test(t) && r1 > .8) prefix = ', ';
   return { text: prefix + t + suffix, rate: clamp(rate, .5, 2), pitch: clamp(pitch, .5, 1.5) };
 }
@@ -1571,13 +1608,19 @@ function startWatchdog() {
   watchdogInt = setInterval(() => {
     if (!reading || paused) return;
     try {
-      if (curUtter && !synth.speaking && !synth.pending && Date.now() - lastSentenceEndTs > 6000) {
-        // движок «умер» посреди фразы — чиним
+      // движок «умер» посреди фразы (не говорит и не продолжает) — чиним через перезапуск куска
+      const idleMs = performance.now() - Math.max(lastSentenceEndTs, _lastSpeakTs);
+      if (curUtter && !synth.speaking && !synth.pending && idleMs > 5000) {
         setStatus('🩺 Оживил зависший голос…', true);
         speakCurrent(true);
+      } else if (curUtter && synth.speaking && idleMs > 20000) {
+        // говорит, но застрял (не было ни onstart, ни boundary 20с) — перезапускаем очередь
+        setStatus('🩺 Голос залип — перезапускаю…', true);
+        try { synth.cancel(); } catch (e) {}
+        setTimeout(() => { if (reading && !paused) speakCurrent(true); }, 150);
       }
     } catch (e) {}
-  }, 7000);
+  }, 4000);
 }
 function stopWatchdog() { clearInterval(watchdogInt); watchdogInt = null; }
 
@@ -1590,9 +1633,13 @@ function makeUtterance(piece) {
   u.voice = sel.voice.voice;
   u.lang = sel.voice.lang || 'ru-RU';
   u.rate = h.rate; u.pitch = h.pitch;
-  u.volume = clamp(parseFloat(el.vol.value), 0, 1);
-  u.onstart = () => { lastSentenceEndTs = performance.now(); };
+  // тихий голос = тишина: многие движки при volume=0 вообще не заводятся
+  let vol = clamp(parseFloat(el.vol.value), 0, 1);
+  if (vol <= 0.02) { vol = 0.35; setStatus('🔇 Громкость на нуле — ставлю слышимый минимум. Прибавьте громкость!', true); }
+  u.volume = vol;
+  u.onstart = () => { lastSentenceEndTs = performance.now(); _lastSpeakTs = performance.now(); };
   u.onboundary = ev => {
+    _lastSpeakTs = performance.now();
     if (ev.name === 'word' || ev.charIndex != null) {
       // грубая оценка: сколько слов реально озвучено
       const spoken = (h.text.slice(0, ev.charIndex || 0).match(/[\wа-яёА-ЯЁ]+/g) || []).length;
@@ -1611,8 +1658,15 @@ function makeUtterance(piece) {
     breathGapTimer = setTimeout(() => { if (reading && !paused) next(); }, gap);
   };
   u.onerror = ev => {
-    if (ev.error === 'interrupted' || ev.error === 'canceled') return;
-    handleVoiceFailure(ev.error);
+    const err = (ev && ev.error) || 'unknown';
+    if (err === 'interrupted' || err === 'canceled') return; // наши же synth.cancel() — не ошибка
+    if (err === 'not-allowed') {
+      setStatus('🔒 Браузер требует жест пользователя: кликните по странице и нажмите ▶ ещё раз.', true);
+      toast('Браузер заблокировал автозапуск звука. Кликните куда-нибудь на странице, затем снова «Читать».', 'bad', 7000);
+      stopReading();
+      return;
+    }
+    handleVoiceFailure(err);
   };
   return u;
 }
@@ -1648,7 +1702,17 @@ function speakCurrent(skipAdvance) {
   if (!u) { stopReading(); return; }
   curUtter = u;
   highlight(currentIdx);
+  _lastSpeakTs = performance.now();
   try { synth.speak(u); } catch (e) { handleVoiceFailure('throw'); }
+  // страховка: если движок не вызвал onstart в течение 3с — фразы нет в очереди, чиним
+  const guardIdx = currentIdx;
+  setTimeout(() => {
+    if (!reading || paused || guardIdx !== currentIdx) return;
+    if (!synth.speaking && !synth.pending && performance.now() - _lastSpeakTs > 2600) {
+      setStatus('🛠 Движок молчал — перезапускаю фразу…', true);
+      speakCurrent(true);
+    }
+  }, 3000);
   updateDock();
 }
 
@@ -1662,7 +1726,7 @@ function jumpTo(i) {
   try { synth.cancel(); } catch (e) {}
   currentIdx = i;
   failStreak = 0;
-  if (reading && !paused) speakCurrent();
+  if (reading && !paused) deferredSpeak(() => { if (reading && !paused) speakCurrent(); });
   else highlight(i);
 }
 
@@ -1680,8 +1744,10 @@ function startReading() {
   el.play.disabled = true; el.pause.disabled = false; el.stop.disabled = false;
   setStatus('🔊 Читаю…', true);
   try { synth.cancel(); } catch (e) {}
-  speakCurrent();
+  speakSilentChunk(); // сбрасываем залипшую очередь движка перед стартом
+  deferredSpeak(() => { if (reading && !paused) speakCurrent(); });
   startWatchdog();
+  keepAliveStart();
   showDock(true);
   tickMetrics();
   startSleepTicker();
@@ -1750,6 +1816,7 @@ function stopReading() {
   clearTimeout(breathGapTimer);
   stopWatchdog();
   stopSleepTicker();
+  keepAliveStop();
   try { synth.cancel(); } catch (e) {}
   el.play.disabled = false; el.pause.disabled = true; el.pause.textContent = '⏸ Пауза'; el.stop.disabled = true;
   flushReadTime();
@@ -1760,7 +1827,7 @@ function stopReading() {
 
 function finishReading() {
   reading = false;
-  stopWatchdog(); stopSleepTicker();
+  stopWatchdog(); stopSleepTicker(); keepAliveStop();
   flushReadTime();
   el.play.disabled = false; el.pause.disabled = true; el.stop.disabled = true;
   setStatus('✅ Готово! Текст прочитан целиком.', true);
@@ -2086,12 +2153,17 @@ function applyTheme(th) {
 /* -------- образцы речи -------- */
 function sampleVoice(v) {
   try { synth.cancel(); } catch (e) {}
-  const u = new SpeechSynthesisUtterance('Жил-был умный чтец. Он проверял голоса, дышал паузами и читал вслух — раз, два, три!');
-  u.voice = v.voice; u.lang = v.lang || 'ru-RU';
-  u.rate = clamp(parseFloat(el.rate.value) || 1, .5, 2);
-  u.pitch = clamp(parseFloat(el.pitch.value) || 1, .5, 1.5);
-  u.volume = clamp(parseFloat(el.vol.value), 0, 1);
-  try { synth.speak(u); } catch (e) { toast('Браузер не дал произнести образец.', 'warn'); }
+  deferredSpeak(() => {
+    const u = new SpeechSynthesisUtterance('Жил-был умный чтец. Он проверял голоса, дышал паузами и читал вслух — раз, два, три!');
+    u.voice = v.voice; u.lang = v.lang || 'ru-RU';
+    u.rate = clamp(parseFloat(el.rate.value) || 1, .5, 2);
+    u.pitch = clamp(parseFloat(el.pitch.value) || 1, .5, 1.5);
+    let sv = clamp(parseFloat(el.vol.value), 0, 1);
+    if (sv <= 0.02) { sv = 0.5; setStatus('🔇 Громкость на нуле — образец всё равно слышно не будет. Прибавьте громкость!', true); }
+    u.volume = sv;
+    u.onstart = () => { _lastSpeakTs = performance.now(); };
+    try { synth.speak(u); } catch (e) { toast('Браузер не дал произнести образец.', 'warn'); }
+  });
 }
 
 async function quickTestOne(v) {
@@ -2454,9 +2526,10 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     loadVoices();
     try { synth.onvoiceschanged = () => loadVoices(); } catch (e) {}
-    // Safari iOS требует жест пользователя перед первой речью
-    const unlock = () => { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u); } catch (e) {} };
-    window.addEventListener('pointerdown', unlock, { once: true });
+    // Safari/iOS требует жест пользователя перед первой речью; заодно «расшевеливаем» движок
+    const unlock = () => { try { synth.resume(); } catch (e) {} speakSilentChunk(); };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
   }
 
   renderLibrary();
